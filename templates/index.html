@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KI Chat Client</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.8.0/styles/github-dark.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <link href="https://cdn.jsdelivr.net/npm/emoji-mart@latest/css/emoji-mart.css" rel="stylesheet">
+    
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/marked@9.1.2/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.8.0/lib/highlight.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/emoji-mart@latest/dist/emoji-mart.js"></script>
+    
+    <style>
+        :root {
+            --bg-primary: #ffffff;
+            --bg-secondary: #f7fafc;
+            --text-primary: #000000;
+            --text-secondary: #4a5568;
+            --accent-color: #4299e1;
+        }
+
+        [data-theme="dark"] {
+            --bg-primary: #1a202c;
+            --bg-secondary: #2d3748;
+            --text-primary: #ffffff;
+            --text-secondary: #cbd5e0;
+            --accent-color: #90cdf4;
+        }
+
+        body {
+            background-color: var(--bg-secondary);
+            color: var(--text-primary);
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        .chat-container {
+            height: calc(100vh - 200px);
+            background-color: var(--bg-primary);
+        }
+
+        .message {
+            max-width: 80%;
+            margin: 10px;
+            padding: 10px;
+            border-radius: 10px;
+        }
+
+        .message-content {
+            white-space: pre-wrap;
+        }
+
+        .user-message {
+            background-color: var(--accent-color);
+            color: white;
+            margin-left: auto;
+        }
+
+        .assistant-message {
+            background-color: var(--bg-secondary);
+            color: var(--text-primary);
+            margin-right: auto;
+        }
+
+        .assistant-message pre {
+            background-color: #2d3748;
+            border-radius: 6px;
+            padding: 1em;
+            margin: 0.5em 0;
+            overflow-x: auto;
+        }
+
+        .assistant-message code {
+            font-family: 'Courier New', Courier, monospace;
+            padding: 0.2em 0.4em;
+            background-color: rgba(0, 0, 0, 0.2);
+            border-radius: 3px;
+        }
+
+        .assistant-message pre code {
+            padding: 0;
+            background-color: transparent;
+        }
+
+        .assistant-message a {
+            color: var(--accent-color);
+            text-decoration: underline;
+        }
+
+        .assistant-message img {
+            max-width: 100%;
+            border-radius: 4px;
+            margin: 0.5em 0;
+        }
+
+        .typing-indicator {
+            display: none;
+            margin: 10px;
+            padding: 10px;
+            border-radius: 10px;
+            background-color: var(--bg-secondary);
+            color: var(--text-secondary);
+            max-width: 80%;
+            margin-right: auto;
+        }
+
+        .typing-indicator.active {
+            display: flex;
+        }
+
+        .cursor {
+            display: inline-block;
+            width: 2px;
+            height: 1em;
+            background: currentColor;
+            margin-left: 2px;
+            animation: blink 1s infinite;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+
+        .katex-display {
+            margin: 1em 0;
+            overflow-x: auto;
+        }
+
+        .session-list {
+            max-height: calc(100vh - 250px);
+            overflow-y: auto;
+        }
+
+        .session-item {
+            cursor: pointer;
+            padding: 0.5rem;
+            margin: 0.25rem 0;
+            border-radius: 0.375rem;
+            transition: background-color 0.2s;
+        }
+
+        .session-item:hover {
+            background-color: var(--bg-secondary);
+        }
+
+        .session-item.active {
+            background-color: var(--accent-color);
+            color: white;
+        }
+
+        .emoji-picker {
+            position: absolute;
+            bottom: 100%;
+            right: 0;
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+    <div class="flex h-screen">
+        <!-- Sidebar -->
+        <div class="w-64 bg-gray-800 text-white p-4 flex flex-col">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold">Chats</h2>
+                <button id="new-chat" class="p-2 bg-blue-500 rounded-lg hover:bg-blue-600">
+                    <i class="fas fa-plus"></i>
+                </button>
+            </div>
+            
+            <div class="session-list flex-grow">
+                <!-- Chat-Sessions werden hier dynamisch eingefügt -->
+            </div>
+            
+            <div class="mt-4 flex justify-between items-center">
+                <button id="theme-toggle" class="p-2 rounded-lg hover:bg-gray-700">
+                    <i class="fas fa-moon"></i>
+                </button>
+                <button id="export-chat" class="p-2 rounded-lg hover:bg-gray-700" disabled>
+                    <i class="fas fa-download"></i>
+                </button>
+            </div>
+
+            <!-- Visualization Menu -->
+            <div class="mt-4 border-t pt-4">
+                <h3 class="text-sm font-semibold mb-2">Visualisierungen</h3>
+                <button id="show-flow" class="w-full p-2 text-left rounded-lg hover:bg-gray-700">
+                    <i class="fas fa-project-diagram mr-2"></i>Konversationsfluss
+                </button>
+                <button id="show-graph" class="w-full p-2 text-left rounded-lg hover:bg-gray-700">
+                    <i class="fas fa-network-wired mr-2"></i>Wissensgraph
+                </button>
+                <button id="show-topics" class="w-full p-2 text-left rounded-lg hover:bg-gray-700">
+                    <i class="fas fa-chart-line mr-2"></i>Themenentwicklung
+                </button>
+                <button id="show-sentiment" class="w-full p-2 text-left rounded-lg hover:bg-gray-700">
+                    <i class="fas fa-smile-beam mr-2"></i>Stimmungsverlauf
+                </button>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="flex-1 flex flex-col">
+            <div class="bg-white dark:bg-gray-800 shadow-lg p-6 flex-1">
+                <h1 class="text-2xl font-bold mb-4 text-center">KI Chat Client</h1>
+                
+                <!-- Chat Container -->
+                <div id="chat-container" class="chat-container overflow-y-auto mb-4 border rounded-lg p-4">
+                    <div id="messages" class="space-y-4"></div>
+                    <div class="typing-indicator flex items-center space-x-2">
+                        <span>KI denkt nach</span>
+                        <div class="dots flex space-x-1">
+                            <div class="dot1 w-2 h-2 bg-gray-500 rounded-full"></div>
+                            <div class="dot2 w-2 h-2 bg-gray-500 rounded-full"></div>
+                            <div class="dot3 w-2 h-2 bg-gray-500 rounded-full"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Input Form -->
+                <form id="chat-form" class="flex space-x-2 relative">
+                    <input type="text" id="user-input" 
+                           class="flex-1 p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-700"
+                           placeholder="Schreiben Sie Ihre Nachricht...">
+                    <button type="button" id="improve-prompt" class="p-2 text-blue-500 hover:text-blue-700" title="Prompt verbessern">
+                        <i class="fas fa-magic"></i>
+                    </button>
+                    <button type="button" id="emoji-button" class="p-2 text-gray-500 hover:text-gray-700">
+                        <i class="far fa-smile"></i>
+                    </button>
+                    <button type="submit" 
+                            class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                    <div id="emoji-picker" class="emoji-picker hidden"></div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Markdown-Konfiguration
+        marked.setOptions({
+            highlight: function(code, lang) {
+                if (lang && hljs.getLanguage(lang)) {
+                    return hljs.highlight(code, { language: lang }).value;
+                }
+                return hljs.highlightAuto(code).value;
+            },
+            breaks: true,
+            gfm: true
+        });
+
+        // LaTeX-Renderer für Markdown
+        const renderer = new marked.Renderer();
+        const originalCode = renderer.code.bind(renderer);
+        
+        renderer.code = function(code, language) {
+            if (language === 'math' || language === 'tex') {
+                try {
+                    return katex.renderToString(code, { displayMode: true });
+                } catch (e) {
+                    console.error('LaTeX-Fehler:', e);
+                    return code;
+                }
+            }
+            return originalCode(code, language);
+        };
+
+        marked.use({ renderer });
+
+        // DOM-Elemente
+        const chatForm = document.getElementById('chat-form');
+        const userInput = document.getElementById('user-input');
+        const messagesContainer = document.getElementById('messages');
+        const typingIndicator = document.querySelector('.typing-indicator');
+        const sessionList = document.querySelector('.session-list');
+        const newChatButton = document.getElementById('new-chat');
+        const themeToggle = document.getElementById('theme-toggle');
+        const exportButton = document.getElementById('export-chat');
+        const emojiButton = document.getElementById('emoji-button');
+        const emojiPicker = document.getElementById('emoji-picker');
+        const improvePromptButton = document.getElementById('improve-prompt');
+
+        let messageHistory = [];
+        let currentMessageDiv = null;
+        let currentSessionId = null;
+
+        // Theme-Management
+        function setTheme(theme) {
+            document.documentElement.setAttribute('data-theme', theme);
+            localStorage.setItem('theme', theme);
+            themeToggle.innerHTML = theme === 'dark' ? '<i class="fas fa-sun"></i>' : '<i class="fas fa-moon"></i>';
+        }
+
+        // Initialisiere Theme
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        setTheme(savedTheme);
+
+        themeToggle.addEventListener('click', () => {
+            const currentTheme = document.documentElement.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            setTheme(newTheme);
+            if (currentSessionId) {
+                fetch(`/api/sessions/${currentSessionId}/theme`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ theme: newTheme })
+                });
+            }
+        });
+
+        // Session-Management
+        async function loadSessions() {
+            const response = await fetch('/api/sessions');
+            const sessions = await response.json();
+            sessionList.innerHTML = '';
+            
+            sessions.forEach(session => {
+                const sessionElement = document.createElement('div');
+                sessionElement.className = `session-item ${session.id === currentSessionId ? 'active' : ''}`;
+                sessionElement.innerHTML = `
+                    <div class="flex justify-between items-center">
+                        <span>${session.title}</span>
+                        <button class="delete-session text-red-500 hover:text-red-700">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                `;
+                
+                sessionElement.querySelector('.delete-session').addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    if (confirm('Chat-Session wirklich löschen?')) {
+                        await fetch(`/api/sessions/${session.id}`, { method: 'DELETE' });
+                        loadSessions();
+                    }
+                });
+                
+                sessionElement.addEventListener('click', () => loadSession(session.id));
+                sessionList.appendChild(sessionElement);
+            });
+        }
+
+        async function loadSession(sessionId) {
+            currentSessionId = sessionId;
+            exportButton.disabled = false;
+            
+            const response = await fetch(`/api/sessions/${sessionId}/messages`);
+            const messages = await response.json();
+            
+            messageHistory = messages;
+            messagesContainer.innerHTML = '';
+            messages.forEach(msg => addMessage(msg.content, msg.role === 'user'));
+            
+            document.querySelectorAll('.session-item').forEach(item => {
+                item.classList.remove('active');
+                if (item.dataset.sessionId === sessionId.toString()) {
+                    item.classList.add('active');
+                }
+            });
+        }
+
+        newChatButton.addEventListener('click', async () => {
+            const title = prompt('Titel für neue Chat-Session:', 'Neue Chat-Session');
+            if (title) {
+                const response = await fetch('/api/sessions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title })
+                });
+                const data = await response.json();
+                loadSessions();
+                loadSession(data.session_id);
+            }
+        });
+
+        exportButton.addEventListener('click', async () => {
+            if (currentSessionId) {
+                window.location.href = `/api/sessions/${currentSessionId}/export?format=json`;
+            }
+        });
+
+        // Emoji-Picker
+        let picker = null;
+        emojiButton.addEventListener('click', () => {
+            if (!picker) {
+                picker = new EmojiMart.Picker({
+                    onSelect: emoji => {
+                        userInput.value += emoji.native;
+                        picker.style.display = 'none';
+                    }
+                });
+                emojiPicker.appendChild(picker);
+            }
+            picker.style.display = picker.style.display === 'none' ? 'block' : 'none';
+        });
+
+        // Tastaturkürzel
+        document.addEventListener('keydown', (e) => {
+            if (e.ctrlKey && e.key === 'Enter') {
+                chatForm.dispatchEvent(new Event('submit'));
+            }
+        });
+
+        // Chat-Funktionen
+        function addMessage(content, isUser) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${isUser ? 'user-message' : 'assistant-message'}`;
+            
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+            
+            if (isUser) {
+                contentDiv.textContent = content;
+            } else {
+                contentDiv.innerHTML = marked.parse(content);
+                contentDiv.querySelectorAll('pre code').forEach((block) => {
+                    hljs.highlightElement(block);
+                });
+            }
+            
+            messageDiv.appendChild(contentDiv);
+            
+            if (!isUser) {
+                const cursor = document.createElement('span');
+                cursor.className = 'cursor';
+                contentDiv.appendChild(cursor);
+            }
+            
+            messagesContainer.appendChild(messageDiv);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            return messageDiv;
+        }
+
+        function updateMessage(messageDiv, content, isComplete = false) {
+            const contentDiv = messageDiv.querySelector('.message-content');
+            contentDiv.innerHTML = marked.parse(content);
+            
+            contentDiv.querySelectorAll('pre code').forEach((block) => {
+                hljs.highlightElement(block);
+            });
+            
+            if (!isComplete) {
+                const cursor = document.createElement('span');
+                cursor.className = 'cursor';
+                contentDiv.appendChild(cursor);
+            }
+            
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        chatForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const message = userInput.value.trim();
+            if (!message) return;
+
+            if (!currentSessionId) {
+                const response = await fetch('/api/sessions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title: 'Neue Chat-Session' })
+                });
+                const data = await response.json();
+                currentSessionId = data.session_id;
+                loadSessions();
+            }
+
+            addMessage(message, true);
+            messageHistory.push({"role": "user", "content": message});
+            userInput.value = '';
+
+            try {
+                typingIndicator.classList.add('active');
+                const response = await fetch('/api/chat/stream', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        session_id: currentSessionId,
+                        messages: messageHistory
+                    })
+                });
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let responseText = '';
+                currentMessageDiv = addMessage('', false);
+
+                while (true) {
+                    const {value, done} = await reader.read();
+                    if (done) break;
+                    
+                    const chunk = decoder.decode(value);
+                    const lines = chunk.split('\n');
+                    
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const data = JSON.parse(line.slice(6));
+                                if (data.error) {
+                                    updateMessage(currentMessageDiv, 'Fehler: ' + data.error, true);
+                                    break;
+                                }
+                                if (data.content) {
+                                    responseText += data.content;
+                                    updateMessage(currentMessageDiv, responseText);
+                                }
+                            } catch (e) {
+                                console.error('Parsing error:', e);
+                            }
+                        }
+                    }
+                }
+
+                messageHistory.push({"role": "assistant", "content": responseText});
+                updateMessage(currentMessageDiv, responseText, true);
+                
+            } catch (error) {
+                console.error('Error:', error);
+                addMessage('Ein Fehler ist aufgetreten. Bitte versuchen Sie es erneut.', false);
+            } finally {
+                typingIndicator.classList.remove('active');
+            }
+        });
+
+        // Prompt-Verbesserung
+        improvePromptButton.addEventListener('click', async () => {
+            const currentPrompt = userInput.value.trim();
+            if (!currentPrompt) {
+                alert('Bitte geben Sie zuerst einen Prompt ein.');
+                return;
+            }
+
+            improvePromptButton.disabled = true;
+            improvePromptButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+
+            try {
+                const response = await fetch('/api/improve-prompt', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        prompt: currentPrompt
+                    })
+                });
+
+                const data = await response.json();
+                if (data.improved_prompt) {
+                    // Zeige den verbesserten Prompt in einem Modal an
+                    const shouldUse = confirm(
+                        'Verbesserter Prompt:\n\n' + 
+                        data.improved_prompt + 
+                        '\n\nMöchten Sie den verbesserten Prompt verwenden?'
+                    );
+                    
+                    if (shouldUse) {
+                        userInput.value = data.improved_prompt;
+                    }
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Fehler bei der Prompt-Verbesserung. Bitte versuchen Sie es erneut.');
+            } finally {
+                improvePromptButton.disabled = false;
+                improvePromptButton.innerHTML = '<i class="fas fa-magic"></i>';
+            }
+        });
+
+        // Visualization Handlers
+        document.getElementById('show-flow').addEventListener('click', async () => {
+            if (!currentSessionId) {
+                alert('Bitte starten Sie zuerst eine Chat-Session.');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/visualize/flow', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        messages: messageHistory
+                    })
+                });
+                
+                const data = await response.json();
+                addMessage(`Konversationsfluss:\n\n${JSON.stringify(data, null, 2)}`, false);
+            } catch (error) {
+                console.error('Error:', error);
+                addMessage('Fehler beim Laden des Konversationsflusses.', false);
+            }
+        });
+
+        document.getElementById('show-graph').addEventListener('click', async () => {
+            if (!currentSessionId) {
+                alert('Bitte starten Sie zuerst eine Chat-Session.');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/visualize/graph', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        messages: messageHistory
+                    })
+                });
+                
+                const data = await response.json();
+                addMessage(`Wissensgraph:\n\n${JSON.stringify(data, null, 2)}`, false);
+            } catch (error) {
+                console.error('Error:', error);
+                addMessage('Fehler beim Laden des Wissensgraphen.', false);
+            }
+        });
+
+        document.getElementById('show-topics').addEventListener('click', async () => {
+            if (!currentSessionId) {
+                alert('Bitte starten Sie zuerst eine Chat-Session.');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/visualize/topics', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        messages: messageHistory
+                    })
+                });
+                
+                const data = await response.json();
+                addMessage(`Themenentwicklung:\n\n${JSON.stringify(data, null, 2)}`, false);
+            } catch (error) {
+                console.error('Error:', error);
+                addMessage('Fehler beim Laden der Themenentwicklung.', false);
+            }
+        });
+
+        document.getElementById('show-sentiment').addEventListener('click', async () => {
+            if (!currentSessionId) {
+                alert('Bitte starten Sie zuerst eine Chat-Session.');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/visualize/sentiment', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        messages: messageHistory
+                    })
+                });
+                
+                const data = await response.json();
+                addMessage(`Stimmungsverlauf:\n\n${JSON.stringify(data, null, 2)}`, false);
+            } catch (error) {
+                console.error('Error:', error);
+                addMessage('Fehler beim Laden des Stimmungsverlaufs.', false);
+            }
+        });
+
+        // Initialisierung
+        loadSessions();
+    </script>
+</body>
+</html>
